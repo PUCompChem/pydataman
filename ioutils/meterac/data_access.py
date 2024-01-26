@@ -13,3 +13,6 @@ def read_metadata(request_url):
     meta_data = list(csv.reader(data_nodes.splitlines(), delimiter=','))
     df = pd.DataFrame(meta_data[1:], columns=meta_data[0])
     return df
+
+def read_data():
+    pass
