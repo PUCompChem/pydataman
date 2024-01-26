@@ -1,0 +1,16 @@
+name: pydataman
+channels:
+  - conda-forge
+  - default
+dependencies:
+  - python==3.10
+  - matplotlib
+  - numpy
+  - pandas
+  - pip
+  - scikit-learn
+  - scipy
+  - setuptools
+  - requests
+  - pip:
+    - -e .

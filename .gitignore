@@ -1,0 +1,11 @@
+########################################################################################################################
+
+### Python ###
+# Ignore Python pycache directories
+__pycache__/
+
+# Ignore .idea directory
+.idea/
+
+# Ignore .egg-info directories
+*.egg-info/
