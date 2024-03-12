@@ -3,6 +3,8 @@ import requests
 from requests.exceptions import HTTPError, JSONDecodeError
 from io import StringIO
 from datetime import datetime, timedelta
+import plotly.subplots as sp
+import plotly.express as px
 
 
 def read_rainfall_data(device, url=None):
@@ -64,76 +66,99 @@ def amount_precipitation(df, interval_h=24, rainfall_column='rainfall', date_col
                     Date    PQ
     0 2023-11-30 00:00:00  35.0
     """
-
-    df['Date'] = [d.date() for d in df[date_column]]
-    df['Date'] = pd.to_datetime(df['Date'])
+    #
+    # df['Date'] = [d.date() for d in df[date_column]]
+    # df['Date'] = pd.to_datetime(df['Date'])
 
     result_list = []
     if interval_h == 0:
         interval_h = 0.0167
 
-    for start_date in pd.date_range(start=df['Date'].min(), end=df['Date'].max(), freq='24h'):
+    for start_date in pd.date_range(start=df[date_column].min(), end=df[date_column].max(), freq=f'{interval_h}h'):
         end_date = start_date + timedelta(hours=interval_h)
 
-        filtered_df = df[(df['Date'] >= start_date) & (df['Date'] < end_date)]
+        filtered_df = df[(df[date_column] >= start_date) & (df[date_column] < end_date)]
         calc = sum(filtered_df[rainfall_column] / 10 * 0.2)
-        res = {'Date': start_date, 'PQ': calc}
+        res = {date_column: start_date, 'pq': calc}
         result_list.append(res)
     result_df = pd.DataFrame(result_list)
 
     return result_df
 
 
-def find_rain_periods(df, rainfall_col, threshold=0.3, start_window=5, stop_window=10, date_column='Date/Time'):
+def find_rain_periods(df, rainfall_col, threshold=0.01, stop_window=10, date_column='Date/Time'):
     """
-    Find start and stop points of rain periods in the given DataFrame.
+    Detects periods of rainfall in a DataFrame based on specified criteria.
 
-    Parameters:
-    - df (pandas.DataFrame): Input DataFrame containing rainfall column and date column.
-    - rainfall_col (str): Name of the column with rainfall data.
-    - threshold (float): Threshold value for 'PQ' to indicate the start of rain. Default is 0.3.
-    - start_window (int): Number of previous values to consider for starting rain. Default is 5.
-    - stop_window (int): Number of consecutive values after starting rain to consider for stopping rain. Default is 10.
-    - date_column (str): Name of the column containing date and time information. Default is 'Date/Time'.
+    Parameters: df (DataFrame): The DataFrame containing rainfall data. rainfall_col (str): The name of the column
+    containing rainfall data. threshold (float, optional): The threshold value to consider as rainfall. Default is
+    0.01. stop_window (int, optional): The window size (in minutes) to consider as the end of rainfall if no rain is
+    detected. Default is 10. date_column (str, optional): The name of the column containing datetime information.
+    Default is 'Date/Time'.
 
     Returns:
-    pandas.DataFrame: A new DataFrame with columns 'Start_Time', 'Stop_Time', and 'Duration',
-                      representing the start time, stop time, and duration of each rain period.
+        DataFrame: A DataFrame containing the detected rainfall periods with columns:
+            - Start_Time: The start time of the rainfall period.
+            - Stop_Time: The stop time of the rainfall period.
+            - Duration_(min): The duration of the rainfall period in minutes.
+            - Amount_Rainfall_(mm): The total amount of rainfall during the period in millimeters.
     """
-
     rain_periods = []
 
     start_time = None
     consecutive_zeros = 0
-    df = df.reset_index(drop=True)
 
     for index, row in df.iterrows():
         current_value = row[rainfall_col]
         next_value = df.at[index + 1, rainfall_col] if index + 1 < len(df) else None
-        previous_value = df.at[index - 1, rainfall_col] if index != 0 else None
-        if next_value is None:
-            continue
-        if previous_value is None:
-            continue
 
-        if (next_value - current_value) >= 0.01:
+        if next_value is None:
+            if start_time is not None:
+                stop_time = row[date_column]
+                rainfall_sum = df[(df[date_column] >= start_time) & (df[date_column] <= stop_time)][rainfall_col].sum()
+                rain_periods.append({'Start_Time': start_time,
+                                     'Stop_Time': stop_time,
+                                     'Duration_(min)': (stop_time - start_time).total_seconds() / 60,
+                                     'Amount_Rainfall_(mm)': rainfall_sum})
+            break
+
+        # if abs(next_value - current_value) >= threshold:
+        if round(abs(next_value - current_value), 10) >= threshold:
             if start_time is None:
                 start_time = pd.to_datetime(row[date_column])
-                stop_time = None
-                consecutive_zeros = 0
+
+            consecutive_zeros = 0
 
         elif next_value == current_value and start_time is not None:
             consecutive_zeros += 1
             if consecutive_zeros == stop_window:
-                stop_time = pd.to_datetime(row[date_column]) - pd.to_timedelta(stop_window, unit='minutes')
-                rain_periods.append({'Start_Time': start_time, 'Stop_Time': stop_time,
-                                     'Duration min': (stop_time - start_time).total_seconds() / 60})
+                stop_time = pd.to_datetime(row[date_column])
+                # stop_time = pd.to_datetime(row[date_column]) - pd.to_timedelta(stop_window, unit='minutes')
+                rainfall_sum = df[(df[date_column] >= start_time) & (df[date_column] <= stop_time)][rainfall_col].sum()
+                rain_periods.append({'Start_Time': start_time,
+                                     'Stop_Time': stop_time,
+                                     'Duration_(min)': (stop_time - start_time).total_seconds() / 60,
+                                     'Amount_Rainfall_(mm)': rainfall_sum})
                 start_time = None
-        else:
-            consecutive_zeros = 0
 
-    result_df = pd.DataFrame(rain_periods)
-    return result_df
+    return pd.DataFrame(rain_periods)
+
+
+def subtract_next_value(df, column):
+    """
+    Subtract each next value from the previous value in the given column of the DataFrame.
+
+    Parameters:
+    - df (pandas.DataFrame): Input DataFrame.
+    - column (str): Name of the column from which values will be subtracted.
+
+    Returns:
+    pandas.DataFrame: DataFrame with the values subtracted.
+    """
+    subtracted_df = df.copy()
+    subtracted_df[column] = abs(subtracted_df[column] - subtracted_df[column].shift(1))
+    subtracted_df.at[0, column] = 0
+    return subtracted_df
 
 
 def sum_by_period(df, rainfall_col, interval_hours=24, date_column='Date/Time'):
@@ -144,7 +169,75 @@ def sum_by_period(df, rainfall_col, interval_hours=24, date_column='Date/Time'):
 
         filtered_df = df[(df[date_column] >= start_date) & (df[date_column] < end_date)]
         calc = sum(filtered_df[rainfall_col])
-        res = {'Date': start_date, 'PQ': calc}
+        res = {date_column: start_date, 'PQ (mm)': calc}
         result_list.append(res)
     result_df = pd.DataFrame(result_list)
     return result_df
+
+
+def plot_precipitation(df, rainfall_column, date_column='Date/Time'):
+    if date_column != 'Date/Time':
+        df['Date'] = [d.date() for d in df[date_column]]
+        df['Date'] = pd.to_datetime(df['Date'])
+        print(df.head())
+
+    df['Month'] = df['Date'].dt.month
+    df['Year'] = df['Date'].dt.year
+
+    # Plotting daily precipitation
+    if len(df['Date'].dt.month.unique()) > 1:
+        fig = sp.make_subplots(rows=2, cols=1, shared_xaxes=False,
+                               subplot_titles=['Daily Precipitation', 'Monthly Precipitation'],
+                               row_heights=[0.8, 0.2])
+
+        daily_precipitation = px.bar(df, x='Date', y=rainfall_column,
+                                     # color='Month',
+                                     labels={rainfall_column: 'Hover Data'},
+                                     hover_data={'Date': '|%B %Y'})
+
+        daily_precipitation.update_xaxes(
+            dtick="M1",
+            tickformat="%b\n%Y",
+            ticklabelmode="period")
+
+        # Add daily precipitation subplot
+        for trace in daily_precipitation.data:
+            fig.add_trace(trace, row=1, col=1)
+
+        # Calculate the sum of precipitation for each month and year
+        monthly_sum = df.groupby(['Year', 'Month'])[rainfall_column].sum().reset_index()
+
+        # Plotting monthly sum with the same color palette
+        monthly_sum_chart = px.bar(monthly_sum, x='Month', y=rainfall_column,
+                                   # color='Month',
+                                   facet_col='Year',
+                                   text='Year',
+                                   labels={rainfall_column: 'Monthly Sum'},
+                                   hover_data={'Month': '|%B'})
+
+        monthly_sum_chart.update_xaxes(
+            dtick="M1",
+            tickformat="%b\n%Y",
+            ticklabelmode="period")
+
+        # Use the same color palette as the first subplot
+        for i, trace in enumerate(monthly_sum_chart.data):
+            fig.add_trace(trace, row=2, col=1)
+
+        fig.update_yaxes(title_text='Precipitation (mm)', row=1, col=1)
+        fig.update_yaxes(title_text='Precipitation (mm)', row=2, col=1)
+        fig.show()
+
+    else:
+        daily_precipitation = px.bar(df, x='Date', y=rainfall_column,
+                                     # color='Date',
+                                     labels={rainfall_column: 'Hover Data'},
+                                     hover_data={'Date': '|%B %Y'})
+
+        daily_precipitation.update_xaxes(
+            dtick='D1',
+            tickformat="%d-%m",
+            ticklabelmode="period")
+
+        daily_precipitation.update_layout(xaxis_title='Date', yaxis_title='Precipitation (mm)')
+        daily_precipitation.show()
