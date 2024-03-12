@@ -29,6 +29,6 @@ def convert_unix_time(df, unixtime_column):
     df.columns = df.columns.str.lower()
     df['Date/Time'] = pd.to_datetime(df[unixtime_column.lower()], unit='s')
     df['Date'] = [d.date() for d in df['Date/Time']]
-    df['Date']= pd.to_datetime(df['Date'])
+    df['Date'] = pd.to_datetime(df['Date'])
 
     df['Time'] = [d.time() for d in df['Date/Time']]

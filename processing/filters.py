@@ -40,4 +40,5 @@ def filter_df_by_date_range(df, start_date=None, end_date=None, last_year=False,
 
     else:
         return df
+    filtered_df.reset_index(drop=True, inplace=True)
     return filtered_df
