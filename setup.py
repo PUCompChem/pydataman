@@ -14,7 +14,7 @@ INSTALL_REQUIRES = [
     'setuptools'
 ]
 
-PACKAGES = ["ioutils", "processing"]
+PACKAGES = ["ioutils", "processing", "meteo"]
 
 PACKAGE_DATA = {}
 

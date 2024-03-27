@@ -1,5 +1,6 @@
 import pandas as pd
 import requests
+from matplotlib import pyplot as plt
 from requests.exceptions import HTTPError, JSONDecodeError
 from io import StringIO
 from datetime import datetime, timedelta
@@ -66,21 +67,23 @@ def amount_precipitation(df, interval_h=24, rainfall_column='rainfall', date_col
                     Date    PQ
     0 2023-11-30 00:00:00  35.0
     """
-    #
-    # df['Date'] = [d.date() for d in df[date_column]]
-    # df['Date'] = pd.to_datetime(df['Date'])
-
     result_list = []
     if interval_h == 0:
-        interval_h = 0.0167
+        for index, row in df.iterrows():
+            calc = row[rainfall_column] / 10 * 0.2
+            res = {date_column: row[date_column], 'pq': calc}
+            result_list.append(res)
+    else:
+        interval_minutes = interval_h * 60
 
-    for start_date in pd.date_range(start=df[date_column].min(), end=df[date_column].max(), freq=f'{interval_h}h'):
-        end_date = start_date + timedelta(hours=interval_h)
+        for start_date in pd.date_range(start=df[date_column].min(), end=df[date_column].max(), freq=f'{interval_minutes}T'):
+            end_date = start_date + pd.Timedelta(minutes=interval_minutes)
 
-        filtered_df = df[(df[date_column] >= start_date) & (df[date_column] < end_date)]
-        calc = sum(filtered_df[rainfall_column] / 10 * 0.2)
-        res = {date_column: start_date, 'pq': calc}
-        result_list.append(res)
+            filtered_df = df[(df[date_column] >= start_date) & (df[date_column] < end_date)]
+            calc = sum(filtered_df[rainfall_column] / 10 * 0.2)
+            res = {date_column: start_date, 'pq': calc}
+            result_list.append(res)
+
     result_df = pd.DataFrame(result_list)
 
     return result_df
@@ -161,10 +164,16 @@ def subtract_next_value(df, column):
     return subtracted_df
 
 
-def sum_by_period(df, rainfall_col, interval_hours=24, date_column='Date/Time'):
+def sum_by_period(df, rainfall_col, interval_hours=24, date_column='Date/Time', standard='international'):
     result_list = []
 
+    if standard == 'bg':
+        start_hour, start_minute = 7, 30  # Bulgarian standard
+    else:
+        start_hour, start_minute = 0, 0  # international standard
+
     for start_date in pd.date_range(start=df[date_column].min(), end=df[date_column].max(), freq=f'{interval_hours}h'):
+        start_date = start_date.replace(hour=start_hour, minute=start_minute)
         end_date = start_date + timedelta(hours=interval_hours)
 
         filtered_df = df[(df[date_column] >= start_date) & (df[date_column] < end_date)]
@@ -176,11 +185,9 @@ def sum_by_period(df, rainfall_col, interval_hours=24, date_column='Date/Time'):
 
 
 def plot_precipitation(df, rainfall_column, date_column='Date/Time'):
-    if date_column != 'Date/Time':
-        df['Date'] = [d.date() for d in df[date_column]]
-        df['Date'] = pd.to_datetime(df['Date'])
-        print(df.head())
-
+    # if date_column != 'Date/Time':
+    df['Date'] = [d.date() for d in df[date_column]]
+    df['Date'] = pd.to_datetime(df['Date'])
     df['Month'] = df['Date'].dt.month
     df['Year'] = df['Date'].dt.year
 
@@ -192,8 +199,8 @@ def plot_precipitation(df, rainfall_column, date_column='Date/Time'):
 
         daily_precipitation = px.bar(df, x='Date', y=rainfall_column,
                                      # color='Month',
-                                     labels={rainfall_column: 'Hover Data'},
-                                     hover_data={'Date': '|%B %Y'})
+                                     labels={rainfall_column: 'Rainfall (mm)'},
+                                     hover_data={'Date': True})
 
         daily_precipitation.update_xaxes(
             dtick="M1",
@@ -209,11 +216,10 @@ def plot_precipitation(df, rainfall_column, date_column='Date/Time'):
 
         # Plotting monthly sum with the same color palette
         monthly_sum_chart = px.bar(monthly_sum, x='Month', y=rainfall_column,
-                                   # color='Month',
-                                   facet_col='Year',
-                                   text='Year',
+                                   # facet_col='Year',
+                                   # text='Year',
                                    labels={rainfall_column: 'Monthly Sum'},
-                                   hover_data={'Month': '|%B'})
+                                   hover_data={'Month': True, 'Year':True})
 
         monthly_sum_chart.update_xaxes(
             dtick="M1",
@@ -226,13 +232,13 @@ def plot_precipitation(df, rainfall_column, date_column='Date/Time'):
 
         fig.update_yaxes(title_text='Precipitation (mm)', row=1, col=1)
         fig.update_yaxes(title_text='Precipitation (mm)', row=2, col=1)
-        fig.show()
+        return fig
 
     else:
         daily_precipitation = px.bar(df, x='Date', y=rainfall_column,
                                      # color='Date',
-                                     labels={rainfall_column: 'Hover Data'},
-                                     hover_data={'Date': '|%B %Y'})
+                                     labels={rainfall_column: 'Rainfall (mm)'},
+                                     hover_data={'Date': True})
 
         daily_precipitation.update_xaxes(
             dtick='D1',
@@ -240,4 +246,20 @@ def plot_precipitation(df, rainfall_column, date_column='Date/Time'):
             ticklabelmode="period")
 
         daily_precipitation.update_layout(xaxis_title='Date', yaxis_title='Precipitation (mm)')
-        daily_precipitation.show()
+        return daily_precipitation
+
+
+def plot_rainfall_intensity(df, x_col, y_col, device, threshold=0.0001):
+    plt.figure(figsize=(10, 6))
+
+    filtered_df = df[df[y_col] >= threshold]
+
+    plt.plot(filtered_df[x_col], filtered_df[y_col], marker='o', linestyle='', markersize=7,
+             markerfacecolor='MidnightBlue', markeredgewidth=0.1, markeredgecolor='white')
+
+    plt.xlabel('Date and time')
+    plt.ylabel('Rainfall (mm)')
+    plt.title(f'Rainfall Intensity for device: {device}')
+    plt.grid(True, color='gray', linestyle='-', linewidth=0.1)
+
+    return plt
