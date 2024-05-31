@@ -1,6 +1,6 @@
 from setuptools import setup
 
-NAME = "Data management"
+NAME = "pydataman"
 
 AUTHOR = 'PUCompChem'
 
