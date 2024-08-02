@@ -28,4 +28,5 @@ setup(
     packages=PACKAGES,
     # package_data=PACKAGE_DATA,
     classifiers=CLASSIFIERS,
+    version="0.0.1"
 )
