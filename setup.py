@@ -1,8 +1,11 @@
-from setuptools import setup
+from setuptools import find_packages, setup
+
 
 NAME = "pydataman"
 
-AUTHOR = 'PUCompChem'
+AUTHOR = "PUCompChem"
+
+VERSION = "0.0.1"
 
 INSTALL_REQUIRES = [
     'matplotlib',
@@ -14,9 +17,12 @@ INSTALL_REQUIRES = [
     'setuptools'
 ]
 
-PACKAGES = ["ioutils", "processing", "meteo"]
 
-PACKAGE_DATA = {}
+PACKAGES = find_packages(where='src')
+
+PACKAGE_DIR = {'': 'src'}
+
+#PACKAGE_DATA = {}
 
 CLASSIFIERS = ["Example :: Invalid"]
 
@@ -26,7 +32,8 @@ setup(
     author=AUTHOR,
     install_requires=INSTALL_REQUIRES,
     packages=PACKAGES,
+    package_dir=PACKAGE_DIR,
     # package_data=PACKAGE_DATA,
     classifiers=CLASSIFIERS,
-    version="0.0.1"
+    version=VERSION
 )
